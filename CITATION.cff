@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "gate-distill: reference implementation of GATE"
+version: 0.1.0
+date-released: 2026-02-24
+license: Apache-2.0
+repository-code: "https://github.com/hanaml-lab/domain-distillation-rl"
+authors:
+  - family-names: Agarwal
+    given-names: Manav
+    affiliation: hanaML
+preferred-citation:
+  type: report
+  title: "GATE: Gap-Adaptive Mixing of On-Policy Distillation and Verifiable Rewards for Small Domain Specialists"
+  authors:
+    - family-names: Agarwal
+      given-names: Manav
+      affiliation: hanaML
+  institution:
+    name: hanaML
+  year: 2026
+  month: 2

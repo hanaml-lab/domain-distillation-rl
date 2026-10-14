@@ -1,0 +1,13 @@
+prompt_id,teacher_solved,teacher_samples,student_solved,student_samples
+finqa-001,4,4,8,8
+finqa-002,4,4,7,8
+finqa-003,3,4,5,8
+finqa-004,4,4,2,8
+finqa-005,4,4,0,8
+finqa-006,3,4,0,8
+finqa-007,1,4,1,8
+finqa-008,0,4,3,8
+finqa-009,0,4,0,8
+finqa-010,2,4,4,8
+finqa-011,4,4,1,8
+finqa-012,1,4,0,8

@@ -20,7 +20,8 @@ def test_lambda_vectorised_and_bounded():
 
 
 def test_combined_advantage_limits():
-    a_rl = np.array([1.0, -1.0]); a_opd = np.array([[0.5, 0.5], [-0.5, 0.0]])
+    a_rl = np.array([1.0, -1.0])
+    a_opd = np.array([[0.5, 0.5], [-0.5, 0.0]])
     cfg = GateConfig(alpha=1.0)
     assert np.allclose(combined_advantages(a_rl, a_opd, 0.0, cfg), [[1, 1], [-1, -1]])
     assert np.allclose(combined_advantages(a_rl, a_opd, 1.0, cfg), a_opd)

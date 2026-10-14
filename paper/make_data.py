@@ -214,7 +214,7 @@ for m in METHODS:
     if m == "gate":
         lines.append("\\midrule")
     lines.append(f"{MNAME[m]} & " + " & ".join(cells) + f" & {avg:.1f} & {rel:.1f} \\\\")
-ref = (f"\\midrule\n\\textcolor{{gray}}{{Qwen3-32B (prompted)}} & " + " & ".join(f"\\textcolor{{gray}}{{{REF32[t]:.1f}}}" for t in TASKS)
+ref = ("\\midrule\n\\textcolor{gray}{Qwen3-32B (prompted)} & " + " & ".join(f"\\textcolor{{gray}}{{{REF32[t]:.1f}}}" for t in TASKS)
        + f" & \\textcolor{{gray}}{{{np.mean(list(REF32.values())):.1f}}} & \\textcolor{{gray}}{{{np.mean([REF32[t]/TEACHER[t] for t in TASKS])*100:.1f}}} \\\\\n"
        f"\\textcolor{{gray}}{{Teacher: Qwen3-235B-A22B}} & " + " & ".join(f"\\textcolor{{gray}}{{{TEACHER[t]:.1f}}}" for t in TASKS)
        + f" & \\textcolor{{gray}}{{{np.mean(list(TEACHER.values())):.1f}}} & \\textcolor{{gray}}{{100.0}} \\\\")

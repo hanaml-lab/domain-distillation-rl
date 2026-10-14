@@ -10,13 +10,14 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Manav Agarwal", email = "manav@hanaml.com" }]
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24"]
+dependencies = ["numpy>=1.24", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 figures = ["matplotlib>=3.7"]
 dev = ["pytest>=7"]
 
 [project.scripts]
+gate-demo = "gate_distill.demo:main"
 gate-toy = "gate_distill.cli:main"
 
 [tool.setuptools.packages.find]

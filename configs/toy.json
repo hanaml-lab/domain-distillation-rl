@@ -1,7 +1,0 @@
-{
-  "task": {"n_prompts": 64, "length": 4, "vocab": 6, "frac": [0.35, 0.35, 0.2, 0.1], "seed": 0},
-  "train": {"steps": 300, "batch": 16, "group": 8, "lr": 1.0, "k_teacher": 4, "k_student": 8, "kdrl_lambda": 0.5},
-  "gate": {"beta": 8.0, "gamma": 1.0, "tau": 0.15, "alpha": 0.5, "clip": 5.0, "prefix_cap": null, "skip_below": 0.05},
-  "methods": ["grpo", "opd", "kdrl", "gate"],
-  "seeds": [0, 1, 2]
-}

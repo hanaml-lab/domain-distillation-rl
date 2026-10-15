@@ -90,7 +90,7 @@ These numbers come from the report's seeded simulation and are illustrative. Qwe
 | **GATE** | **87.1** | **68.6** | **81.8** | **89.6** | **98.7** |
 | Teacher | 88.4 | 71.9 | 82.6 | 88.1 | 100 |
 
-`bash scripts/reproduce_paper.sh` regenerates every table and figure. On every push, CI reruns `paper/make_data.py` and checks its tables and results against `paper/results.sha256` (`python paper/check_results.py`), so the report's numbers are exactly what the script emits.
+`bash scripts/reproduce_paper.sh` regenerates the tables and figures that the report's seeded simulation produces. On every push, CI reruns `paper/make_data.py` and checks the tables and results it writes against `paper/results.sha256` (`python paper/check_results.py`).
 
 ## Layout
 

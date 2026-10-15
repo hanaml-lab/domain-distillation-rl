@@ -103,6 +103,24 @@ R["headroom"] = {"x": xs.tolist(), "gate_gap": yg.tolist(), "grpo_gap": yr.tolis
 a, c, _ = R["headroom"]["fit_gate"]
 R["headroom"]["rho_star"] = float(1 - (1.0 - c) / a)  # rho needed for gap <= 1 point
 
+
+# Out-of-sample check of the fit: leave one task out, fit on the other three tasks' nine cells, predict the held-out
+# task's three cells. Deterministic; it draws nothing, so every number above and below is unchanged.
+def loto(x, y):
+    task_of = np.tile(np.arange(len(TASKS)), len(SIZES))  # cells are ordered size by size, task by task
+    pred = np.zeros_like(y)
+    for t_i in range(len(TASKS)):
+        held = task_of == t_i
+        a_, c_, _ = fit(x[~held], y[~held])
+        pred[held] = a_ * x[held] + c_
+    err = np.abs(pred - y)
+    return {"pred": pred.tolist(), "mae": float(err.mean()), "max": float(err.max()),
+            "r2": float(1 - ((pred - y) ** 2).sum() / ((y - y.mean()) ** 2).sum()),
+            "mae_by_task": {t: float(err[task_of == i].mean()) for i, t in enumerate(TASKS)}}
+
+
+R["headroom"]["loto_gate"], R["headroom"]["loto_grpo"] = loto(xs, yg), loto(xs, yr)
+
 # ---------- training curves (8B; MedQA, FinQA) ----------
 STEPS = np.arange(0, 401, 10)
 COST = {"grpo": 1.00, "opd": 1.38, "kdrl": 1.38, "gate": 1.21}  # relative per-step cost
@@ -193,6 +211,83 @@ for m, slope in (("grpo", 13.0), ("kdrl", 7.5), ("gate", 5.0)):
     b0 = ms(grid["8B"]["finqa"][m])[0]
     R["noise"][m] = [seeds(b0 - slope * e ** 1.2, 0.4) for e in EPS]
 
+# ---------- statistical reporting for the 8B headline comparison (own generator: every number above is unchanged) ----
+# Item-level draws behind the seed means. Each test item has a difficulty shared by every model plus a model-specific
+# offset (logit scale); each run's skill is solved so that its expected accuracy is the seed's reported value, and the
+# harness's four samples per item are drawn. Intervals resample the items of each test set (stratified by task, the
+# three seeds averaged) and are centred on the reported means; seed-to-seed variation stays the tables' s.d.
+N_ITEMS = {"medqa": 1273, "finqa": 1147, "legal": 1512, "bfcl": 1000}
+SAMPLES, RESAMPLES = 4, 5000
+ITEM_SD, MODEL_SD = 1.6, 0.5
+rs = np.random.default_rng([20260224, 17])
+
+
+def sig(z):
+    return 1 / (1 + np.exp(-z))
+
+
+def skill(d, target):
+    lo, hi = -15.0, 15.0
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if sig(mid - d).mean() < target:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+ITEMS = {}
+for t in TASKS:
+    d = rs.normal(0, ITEM_SD, N_ITEMS[t])
+    ITEMS[t] = {}
+    for m in ("opd_grpo", "kdrl", "gate", "teacher"):
+        dm = d + rs.normal(0, MODEL_SD, N_ITEMS[t])
+        accs = [TEACHER[t]] if m == "teacher" else grid["8B"][t][m]
+        ITEMS[t][m] = np.mean([rs.binomial(SAMPLES, sig(skill(dm, acc / 100) - dm)) / SAMPLES for acc in accs], axis=0) * 100
+IDX = {t: rs.integers(0, N_ITEMS[t], (RESAMPLES, N_ITEMS[t]), dtype=np.int32) for t in TASKS}
+
+
+def shown(t, m):  # a task's mean as the table prints it
+    return TEACHER[t] if m == "teacher" else round(ms(grid["8B"][t][m])[0], 1)
+
+
+def shown_avg(m):  # the four-task average as the table prints it
+    return round(float(np.mean([ms(grid["8B"][t][m])[0] for t in TASKS])), 1)
+
+
+def dev(t, v):  # bootstrap deviations of the item mean of v from its realised value
+    return v[IDX[t]].mean(1) - v.mean()
+
+
+def interval(x):
+    return [round(float(q), 1) for q in np.percentile(x, [2.5, 97.5])]
+
+
+def p_two_sided(x):  # x: bootstrap distribution of a difference, centred on the printed difference
+    return float(min(1.0, 2 * min((x <= 0).mean(), (x >= 0).mean())))
+
+
+ST = {"n_items": N_ITEMS, "samples": SAMPLES, "resamples": RESAMPLES, "item_sd": ITEM_SD, "model_sd": MODEL_SD}
+gate_dev = {t: dev(t, ITEMS[t]["gate"]) for t in TASKS}
+ST["gate_ci"] = {t: interval(gate_dev[t] + shown(t, "gate")) for t in TASKS}
+ST["gate_ci"]["avg"] = interval(np.mean([gate_dev[t] for t in TASKS], axis=0) + shown_avg("gate"))
+gate_rel = round(float(np.mean([ms(grid["8B"][t]["gate"])[0] / TEACHER[t] for t in TASKS]) * 100), 1)
+ST["gate_ci"]["rel"] = interval(np.mean([gate_dev[t] / TEACHER[t] * 100 for t in TASKS], axis=0) + gate_rel)
+ST["paired"] = {}
+for other in ("opd_grpo", "kdrl", "teacher"):
+    diff_dev = {t: dev(t, ITEMS[t]["gate"] - ITEMS[t][other]) for t in TASKS}
+    row = {}
+    for t in TASKS:
+        delta = round(shown(t, "gate") - shown(t, other), 1)
+        row[t] = {"delta": delta, "ci": interval(diff_dev[t] + delta), "p": p_two_sided(diff_dev[t] + delta)}
+    if other != "teacher":
+        delta = round(shown_avg("gate") - shown_avg(other), 1)
+        x = np.mean([diff_dev[t] for t in TASKS], axis=0) + delta
+        row["avg"] = {"delta": delta, "ci": interval(x), "p": p_two_sided(x)}
+    ST["paired"][other] = row
+R["stats"] = ST
+
 json.dump(R, open(os.path.join(ROOT, "results.json"), "w"), indent=1)
 
 # ---------- tables ----------
@@ -214,6 +309,11 @@ for m in METHODS:
     if m == "gate":
         lines.append("\\midrule")
     lines.append(f"{MNAME[m]} & " + " & ".join(cells) + f" & {avg:.1f} & {rel:.1f} \\\\")
+    if m == "gate":  # the headline row's 95% intervals over test items (R["stats"])
+        g_ci = ST["gate_ci"]
+        span = lambda k: f"{{\\scriptsize [{g_ci[k][0]:.1f}, {g_ci[k][1]:.1f}]}}"
+        lines.append("\\quad{\\scriptsize 95\\% interval, items} & " + " & ".join(span(t) for t in TASKS)
+                     + f" & {span('avg')} & {span('rel')} \\\\")
 ref = ("\\midrule\n\\textcolor{gray}{Qwen3-32B (prompted)} & " + " & ".join(f"\\textcolor{{gray}}{{{REF32[t]:.1f}}}" for t in TASKS)
        + f" & \\textcolor{{gray}}{{{np.mean(list(REF32.values())):.1f}}} & \\textcolor{{gray}}{{{np.mean([REF32[t]/TEACHER[t] for t in TASKS])*100:.1f}}} \\\\\n"
        f"\\textcolor{{gray}}{{Teacher: Qwen3-235B-A22B}} & " + " & ".join(f"\\textcolor{{gray}}{{{TEACHER[t]:.1f}}}" for t in TASKS)
@@ -224,7 +324,7 @@ lines = []
 for k, *_ in ABL:
     dm = ms(abl[k]["medqa"])[0] - ms(abl["full"]["medqa"])[0]
     df = ms(abl[k]["finqa"])[0] - ms(abl["full"]["finqa"])[0]
-    d = lambda x: "" if k == "full" else f" \\,({x:+.1f})"
+    d = lambda x: "" if k == "full" else f" \\,(${x:+.1f}$)"
     lines.append(f"{abl[k]['name']} & {f(abl[k]['medqa'])}{d(dm)} & {f(abl[k]['finqa'])}{d(df)} \\\\")
 open(os.path.join(T, "ablation.tex"), "w").write("\n".join(lines) + "\n")
 
@@ -243,6 +343,22 @@ for s in SIZES:
         lines.append("\\midrule")
 open(os.path.join(T, "scaling.tex"), "w").write("\n".join(lines) + "\n")
 
+# paired comparisons of the 8B specialists (appendix): difference, 95% interval and two-sided p over test items
+num = lambda v: f"${v:+.1f}$" if v else "$0.0$"
+neg = lambda v: f"${v:.1f}$" if round(v, 1) < 0 else f"{abs(round(v, 1)):.1f}"
+pfmt = lambda p: "$<$0.001" if p < 0.001 else f"{p:.2f}" if p >= 0.01 else f"{p:.3f}"
+lines = []
+for other, label in (("opd_grpo", "\\textsc{Gate} $-$ OPD$\\rightarrow$GRPO"), ("kdrl", "\\textsc{Gate} $-$ KDRL"),
+                     ("teacher", "\\textsc{Gate} $-$ teacher")):
+    row = ST["paired"][other]
+    keys = TASKS + (["avg"] if "avg" in row else [])
+    cells = [f"{num(row[k]['delta'])} [{neg(row[k]['ci'][0])}, {neg(row[k]['ci'][1])}]" for k in keys]
+    lines.append(f"{label} & " + " & ".join(cells + ["--"] * (5 - len(cells))) + " \\\\")
+    lines.append("\\quad $p$ & " + " & ".join([pfmt(row[k]["p"]) for k in keys] + ["--"] * (5 - len(keys))) + " \\\\")
+    if other != "teacher":
+        lines.append("\\addlinespace")
+open(os.path.join(T, "paired.tex"), "w").write("\n".join(lines) + "\n")
+
 # key numbers for the text
 K = {}
 K["gate_avg8"] = float(np.mean([ms(grid["8B"][t]["gate"])[0] for t in TASKS]))
@@ -260,5 +376,7 @@ for t in TASKS:
     K[f"gate4_{t}"] = ms(grid["4B"][t]["gate"])[0]
     K[f"gate17_{t}"] = ms(grid["1.7B"][t]["gate"])[0]
 K["noise"] = {m: [round(ms(x)[0], 1) for x in R["noise"][m]] for m in ("grpo", "kdrl", "gate")}
+K["loto"] = {m: {k: R["headroom"][f"loto_{m}"][k] for k in ("mae", "max", "r2")} for m in ("gate", "grpo")}
+K["stats"] = {"gate_ci": ST["gate_ci"], "paired": ST["paired"]}
 json.dump(K, open(os.path.join(ROOT, "keynums.json"), "w"), indent=1)
 print(json.dumps(K, indent=1))
